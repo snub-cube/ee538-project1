@@ -20,7 +20,7 @@ int total_nodes = 0; // We keep track of the total number of nodes based on larg
 std::vector<int> opinions;
 
 // global adjacency matrix initialized later
-std::vector<std::vector<int>> adj;
+std::vector<std::vector<int>> adj_list;
 
 // edge list: each row contains {source, target}
 std::vector<std::vector<int>> edge_list;
@@ -39,21 +39,17 @@ void build_adj_matrix()
 
     int size = maxIdx + 1;
 
-    // Initialize a size x size matrix with zeros
-    adj.assign(size, std::vector<int>(size, 0));
-
-
-    // (2) run through edge list and populate adj
-
-    // Fill the matrix 
+    // Resize adjacency list
+    adj_list.resize(size);
+    
+    // Build adjacency list from directed edges
+    // Key change: Only store outgoing edges (source -> target)
     for (const auto& p : edge_list) {
-        adj[p[0]][p[1]] = 1;
-        adj[p[1]][p[0]] = 1; // Symmetric property
-    }
-
-    // Set diagonal to 1 
-    for (int i = 0; i < size; ++i) {
-        adj[i][i] = 1;
+        int source = p[0];  // Influencer
+        int target = p[1];  // Influenced by source
+        
+        // Target's opinion is influenced by source
+        adj_list[target].push_back(source);
     }
     
 }
@@ -85,31 +81,25 @@ double calculate_fraction_of_ones()
 // For a given node, count majority opinion among its neighbours. Tie -> 0.
 int get_majority_friend_opinions(int node)
 {
-
-    // (4) Count the number of neighbours with opinion 0 and opinion 1. Return the majority (0 or 1). 
-    //If tie, return 0.
-
-    // empty case
-    if (opinions.empty()) {
-        return 0;
+    // Key change: Using adjacency list instead of matrix
+    if (node >= adj_list.size() || adj_list[node].empty()) {
+        return opinions[node]; // No neighbors, keep own opinion
     }
-
+    
+    const auto& neighbors = adj_list[node];
     int count_ones = 0;
-
-    // Count 1s
-    for (int op : opinions) {
-        if (op == 1) {
+    
+    // Only iterate over actual neighbors, not all nodes
+    for (int neighbor : neighbors) {
+        if (neighbor < opinions.size() && opinions[neighbor] == 1) {
             count_ones++;
         }
     }
-
-    // Compare count of 1s to the threshold (half the size)
-    if (count_ones > (opinions.size() / 2.0)) {
-        return 1;
-    } else {
-        return 0;
-    }
-
+    
+    int total_neighbors = neighbors.size();
+    
+    // Tie goes to 0
+    return (count_ones > total_neighbors / 2.0) ? 1 : 0;
 }
 
 // Calculate new opinions for all voters and return if anyone's opinion changed
@@ -124,39 +114,19 @@ bool update_opinions()
     bool changed = false;
 
     for (int i = 0; i < n; ++i) {
-        int count_ones = 0;
-        int total_neighbors = 0;
+        int majority = get_majority_friend_opinions(i);
 
-        // Check all potential neighbors j for node i
-        for (int j = 0; j < n; ++j) {
-            if (adj[i][j] == 1) {
-                total_neighbors++;
-                if (opinions[j] == 1) {
-                    count_ones++;
-                }
-            }
-        }
-
-        // Determine majority among neighbors
-        // Only update if the node actually has neighbors
-        if (total_neighbors > 0) {
-            int majority;
-            // 1 if > 50%, else 0
-            if (count_ones > (total_neighbors / 2.0)) {
-                majority = 1;
-            } else {
-                majority = 0;
-            }
-
-            if (new_opinions[i] != majority) {
-                new_opinions[i] = majority;
-                changed = true;
-            }
+        if (new_opinions[i] != majority) {
+            new_opinions[i] = majority;
+            changed = true;
         }
     }
-
+        
     // Apply all changes at once
-    opinions = new_opinions;
+    if (changed) {
+        opinions = std::move(new_opinions);
+    }
+    
     return changed;
 
 }
